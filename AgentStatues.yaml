@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Amazon Connect Agent Statuses (Offline Set)
+
+Parameters:
+  ConnectInstanceArn:
+    Type: String
+    Description: Amazon Connect Instance ARN
+
+Resources:
+  AgentStatusSpecialEvent:
+    Type: AWS::Connect::AgentStatus
+    Properties:
+      InstanceArn: !Ref ConnectInstanceArn
+      Name: Special Event
+      Description: Offline - Surveys, knowledge checks, special events
+      State: ENABLED
+      DisplayOrder: 1
+
+  AgentStatusProject:
+    Type: AWS::Connect::AgentStatus
+    Properties:
+      InstanceArn: !Ref ConnectInstanceArn
+      Name: Project
+      Description: Offline
+      State: ENABLED
+      DisplayOrder: 2
+
