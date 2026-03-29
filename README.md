@@ -53,9 +53,9 @@ All tools listed below have been **used in production environments** and are con
 
 ---
 
-### 1. Contact Flow Migration Toolkit
+### 1. Flow Management Toolkit
 
-Migrates contact flows between Amazon Connect instances and automatically resolves dependencies that would otherwise block publishing.
+Migrates and updates Amazon Connect contact flows across instances, including dependency resolution and configuration updates.
 
 | Script | Purpose |
 |---|---|
@@ -64,82 +64,60 @@ Migrates contact flows between Amazon Connect instances and automatically resolv
 | `update_lambda.py` | Update Lambda function references |
 | `update_lexbot.py` | Update Lex bot integrations |
 
-> ⚠️ Firsr two scripts must be executed before the others. Core dependencies must be resolved before Lambda / Lex updates can succeed.
+> ⚠️ First two scripts must be executed before the others. Core dependencies must be resolved before Lambda / Lex updates can succeed.
 
-📄 See: `contact_flow_migration/README_flow_migration.md`
+📄 See: `contact_flow_migration/README.md`
+
+---
+### 2. Data Pipeline Toolkit
+
+Automates deployment and processing of Amazon Connect CTR data pipelines.
+
+| Tool | Purpose |
+|---|---|
+| `data_pipeline.yaml` + `deploy.sh` | Deploy full CTR data pipeline (S3, Kinesis, Firehose, Glue) |
+| CTR Data Cleaning Lambda | Normalize and clean CTR attributes before storage |
+
+**Capabilities:**
+
+- End-to-end pipeline provisioning
+- IAM automation
+- Optional Lambda transformation integration
+
+📄 See: `data_pipeline/README.md`
+
+---
+### 3. Number Management Toolkit
+
+Provides automation for **phone number provisioning and configuration** in Amazon Connect.
+
+| Tool | Purpose |
+|---|---|
+| `claim_numbers.yaml` | Bulk claim phone numbers using CloudFormation |
+| `map_numbers_to_flows.py` | Associate phone numbers with contact flows and update descriptions |
+
+**Key Notes:**
+
+- CloudFormation is used for number claiming to avoid manual availability checks required by APIs
+- Disable rollback during deployment to retain successfully claimed numbers in case of partial failure
+- Particularly useful after number porting or bulk provisioning scenarios
 
 ---
 
-### 2. Connect Data Pipeline Toolkit
+### 4. Connect Resource Configuration Toolkit
 
-Automates end-to-end deployment of an Amazon Connect CTR data pipeline, including all required AWS resources and IAM configuration.
+Automates deployment and migration of supporting Amazon Connect configuration resources.
 
-**Resources provisioned:**
+| Tool | Purpose |
+|---|---|
+| Hours_of_Operation Migration | Extracts HOO via API and generates CFN templates |
+| Agent Status Deployment | Deploys agent statuses using CloudFormation |
+| Evaluation Form Migration | Migrates evaluation forms (active versions only) |
 
-- S3, Kinesis Data Stream, Kinesis Firehose, Glue Database, Glue Crawler
+**Key Notes:**
 
-**Additional capabilities:**
-
-- Automated IAM inline policy generation and attachment
-- Optional Lambda transformation integration for CTR attribute normalization
-
-> ⚠️ IAM roles must exist before running the deployment script. Resource naming must be consistent across components.
-
-📄 See: `data_pipeline/README_pipeline.md`
-
----
-
-### 3. Hours of Operation Migration
-
-- Uses AWS APIs to extract Hours of Operation from a source instance
-- Generates CloudFormation templates for deployment
-
-> ⚠️ Does not support recurring overrides extraction.
-
----
-
-### 4. Agent Status Deployment
-
-- Deploys agent statuses using CloudFormation
-- Eliminates the need for manual creation in the UI
-
----
-
-### 5. Phone Number Claiming
-
-- Uses CloudFormation to claim phone numbers
-
-> ⚠️ Check service quotas before deployment. Disable rollback when deploying to avoid partial failures.
-
----
-
-### 6. CTR Data Cleaning Lambda
-
-- Cleans user-defined attributes in Connect CTR data
-- Ensures schema consistency before data is stored in S3
-- Designed to work alongside the data pipeline
-
----
-
-### 7. Evaluation Form Migration
-
-- Migrates evaluation forms between instances
-- Only migrates **active versions** to avoid duplicates and incomplete drafts
-
----
-
-### 8. Flow Mapping to Phone Numbers
-
-- Maps contact flows to phone numbers after porting
-- Supports bulk updates
-- Automatically adds descriptions
-
----
-
-### 9. Routing Profile Deployment
-
-- Automates deployment of routing profiles into a target instance
-- Reduces manual configuration effort
+- Designed for cross-instance migration and configuration standardization
+- Focuses on non-flow configuration resources
 
 ---
 

@@ -1,0 +1,63 @@
+# ============================================================
+# Amazon Connect Phone Number Claim Template
+#
+# Purpose:
+# This CloudFormation template is used to bulk claim Amazon Connect
+# phone numbers for a target instance.
+#
+# Typical use case:
+# - Claim backup phone numbers in batch
+# - Reduce repetitive manual claiming work in the AWS Console
+# - Standardize phone number descriptions during provisioning
+#
+# Important deployment notes:
+# - Before deployment, check the phone number quota on the target
+#   Amazon Connect instance
+# - During deployment, it is recommended to disable rollback
+#   so that successfully claimed numbers are retained even if one
+#   or more claims fail
+#
+# Notes:
+# - This example only shows a minimal structure with two numbers
+# - Expand the Resources section as needed for batch claiming
+# - Phone number type is parameterized so the same template can be
+#   reused for DID, TOLL_FREE, or other supported types
+# ============================================================
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Bulk claim backup phone numbers for Amazon Connect.
+
+Parameters:
+  TargetArn:
+    Type: String
+    Description: Target Amazon Connect instance ARN
+
+  CountryCode:
+    Type: String
+    Default: US
+    Description: Country code for the phone numbers to claim
+
+  PhoneNumberType:
+    Type: String
+    Default: DID
+    Description: Phone number type to claim
+    AllowedValues:
+      - DID
+      - TOLL_FREE
+
+Resources:
+  Backup01:
+    Type: AWS::Connect::PhoneNumber
+    Properties:
+      TargetArn: !Ref TargetArn
+      Description: "backup Example Service A"
+      Type: !Ref PhoneNumberType
+      CountryCode: !Ref CountryCode
+
+  Backup02:
+    Type: AWS::Connect::PhoneNumber
+    Properties:
+      TargetArn: !Ref TargetArn
+      Description: "backup Example Service B"
+      Type: !Ref PhoneNumberType
+      CountryCode: !Ref CountryCode
