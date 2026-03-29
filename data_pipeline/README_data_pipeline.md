@@ -1,101 +1,113 @@
 # Amazon Connect Data Pipeline Deployment Toolkit
+
 ## Purpose
 
 This toolkit is designed to automate the deployment of an Amazon Connect data pipeline in a consistent, repeatable, and production-friendly way.
 
 In real-world projects, setting up a data pipeline for Amazon Connect (especially for CTR data) typically involves:
 
-Creating multiple AWS resources (Kinesis, Firehose, S3, Glue)
-Configuring IAM roles and permissions
-Handling optional data transformation logic
-Ensuring everything works together correctly
+- Creating multiple AWS resources (Kinesis, Firehose, S3, Glue)
+- Configuring IAM roles and permissions
+- Handling optional data transformation logic
+- Ensuring everything works together correctly
 
 Manual setup through the AWS UI is:
 
-Time-consuming
-Error-prone (especially IAM permissions)
-Hard to reproduce across environments
+- Time-consuming
+- Error-prone (especially IAM permissions)
+- Hard to reproduce across environments
 
 This toolkit solves these problems by providing a fully automated workflow using:
 
-CloudFormation (CFN) → infrastructure provisioning
-AWS CLI → deployment orchestration
-JMESPath → dynamic value extraction (e.g., ARNs, account info)
-Lambda → optional data transformation (e.g., attribute normalization)
+| Technology | Role |
+|---|---|
+| **CloudFormation (CFN)** | Infrastructure provisioning |
+| **AWS CLI** | Deployment orchestration |
+| **JMESPath** | Dynamic value extraction (e.g., ARNs, account info) |
+| **Lambda** | Optional data transformation (e.g., attribute normalization) |
+
+---
+
 ## Included Components
 
-This toolkit consists of three main parts:
+This toolkit consists of three main parts.
 
-### CloudFormation Template (data_pipeline.yaml)
+### 1. CloudFormation Template (`data_pipeline.yaml`)
 
 Defines the full data pipeline infrastructure:
 
-S3 bucket (data landing zone)
-Kinesis Data Stream (data ingestion)
-Kinesis Firehose (delivery to S3)
-Glue Database (metadata layer)
-Glue Crawler (schema discovery)
+- **S3 Bucket** — Data landing zone
+- **Kinesis Data Stream** — Data ingestion
+- **Kinesis Firehose** — Delivery to S3
+- **Glue Database** — Metadata layer
+- **Glue Crawler** — Schema discovery
 
-Key feature:
+**Key features:**
 
-Supports optional Firehose Lambda transformation
-Designed specifically for Amazon Connect CTR data pipelines
-### Deployment Script (deploy.sh)
+- Supports optional Firehose Lambda transformation
+- Designed specifically for Amazon Connect CTR data pipelines
+
+---
+
+### 2. Deployment Script (`deploy.sh`)
 
 A helper script that automates:
 
-Parameter input (CLI or interactive)
-IAM role ARN lookup
-Lambda ARN lookup (if transformation enabled)
-Inline IAM policy generation and attachment
-CloudFormation deployment
+- Parameter input (CLI or interactive)
+- IAM role ARN lookup
+- Lambda ARN lookup (if transformation enabled)
+- Inline IAM policy generation and attachment
+- CloudFormation deployment
 
-Key value:
+**Key value:**
 
-Eliminates common deployment failures caused by missing IAM permissions
-Provides a one-command deployment experience
-Adds a confirmation step before execution
-### Lambda Function (Optional)
+- Eliminates common deployment failures caused by missing IAM permissions
+- Provides a one-command deployment experience
+- Adds a confirmation step before execution
 
-This Lambda function is used for data transformation in Firehose.
+---
 
-Typical use case (CTR data):
+### 3. Lambda Function (Optional)
 
-Normalize attribute keys (e.g., lowercase, remove spaces/hyphens)
-Clean inconsistent user-defined attributes
-Standardize schema before data lands in S3
+Used for data transformation in Firehose. Typical use case (CTR data):
 
-Important:
+- Normalize attribute keys (e.g., lowercase, remove spaces/hyphens)
+- Clean inconsistent user-defined attributes
+- Standardize schema before data lands in S3
 
-This Lambda is optional
-Only required if EnableTransformation=true
+> **Note:** This Lambda is optional — only required if `EnableTransformation=true`.
+
+---
+
 ## Deployment Workflow
-### Step 1 – (Optional) Deploy Lambda
 
-If you plan to enable transformation:
+### Step 1 — Deploy Lambda (Optional)
 
-Create the Lambda manually via AWS Console or CLI
-No need for additional automation (single function setup is simple)
+If you plan to enable transformation, create the Lambda function in advance:
 
-Make sure:
+- Create via AWS Console or CLI (no additional automation needed)
+- Ensure Lambda is in the **same region** as the stack
+- Ensure Lambda can be invoked by Firehose
 
-Lambda is in the same region
-It can be invoked by Firehose
-### Step 2 – Prepare CloudFormation Template
+---
 
-Ensure your data_pipeline.yaml file is available locally.
+### Step 2 — Prepare CloudFormation Template
 
-### Step 3 – Run Deployment Script
+Ensure your `data_pipeline.yaml` file is available locally.
 
-Execute the script:
+---
 
+### Step 3 — Run Deployment Script
+
+```bash
 ./deploy.sh
+```
 
-You can either:
+You can either provide parameters via CLI or enter them interactively.
 
-Provide parameters via CLI
-Or enter them interactively
-Example CLI Input
+**Example CLI input:**
+
+```bash
 ./deploy.sh \
   --region us-east-1 \
   --stack my-connect-pipeline \
@@ -111,31 +123,36 @@ Example CLI Input
   --lambda my-transform-lambda \
   --buffer-interval 300 \
   --buffer-size 5
-### Step 4 – Confirm Deployment
+```
+
+---
+
+### Step 4 — Confirm Deployment
 
 Before execution, the script will display a preview:
 
+```
 ========== PREVIEW ==========
 ...
 Apply IAM patch and deploy stack now? [y/N]:
+```
 
-Enter:
+Enter `y` to confirm. The script will then:
 
-y
+1. Patch IAM roles (inline policies)
+2. Deploy the CloudFormation stack
+3. Output stack results
 
-The script will then:
+---
 
-Patch IAM roles (inline policies)
-Deploy CloudFormation stack
-Output stack results
-Step 5 – Verify Deployment
+### Step 5 — Verify Deployment
 
-After deployment:
+After deployment, verify via the following:
 
-Check S3 bucket for incoming data
-Verify Firehose is active
-Run Glue Crawler
-Query data via Athena
+- [ ] Check S3 bucket for incoming data
+- [ ] Verify Firehose is active
+- [ ] Run Glue Crawler
+- [ ] Query data via Athena
 ## Example Output
 
 ![alt text](image.png)
