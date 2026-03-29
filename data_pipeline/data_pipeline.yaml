@@ -1,0 +1,287 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# ============================================================
+# Amazon Connect Data Pipeline (CloudFormation Template)
+#
+# Purpose:
+# This template is designed to provision a reusable data pipeline
+# for Amazon Connect data ingestion and analytics, with a primary
+# focus on Contact Trace Records (CTR) data export.
+#
+# What this template creates:
+# - S3 bucket for data storage (landing zone)
+# - Kinesis Data Stream for ingestion
+# - Kinesis Firehose for delivery to S3
+# - Glue Database for metadata management
+# - Glue Crawler for schema discovery
+#
+# Design Considerations:
+# - This pipeline is optimized for streaming data such as CTR
+# - Firehose is used as the central delivery layer into S3
+# - Glue Crawler is used for schema inference and Athena querying
+#
+# Optional Transformation (Important):
+# - This template includes an optional Lambda transformation layer
+#   in Firehose (controlled by EnableTransformation)
+#
+# - This is especially useful for CTR data, where:
+#   - user-defined attributes may have inconsistent naming
+#   - schema normalization may be required before landing in S3
+#
+# - If enabled, Firehose will invoke the provided Lambda function
+#   before delivering data to S3
+#
+# - Typical use cases:
+#   - normalize attribute keys (lowercase, remove spaces/hyphens)
+#   - enrich or filter records
+#   - standardize schema for downstream Athena queries
+#
+# Notes:
+# - IAM roles must be pre-created and passed as parameters
+# - Resource names are parameterized for reuse across environments
+# - This template is designed to be reusable for different pipelines
+#   (e.g., ctr, agent, lens)
+#
+# ============================================================
+Description: >
+  Connect Data Pipeline
+  Creates:
+  - one S3 bucket
+  - one Kinesis Data Stream
+  - one Kinesis Firehose delivery stream
+  - one Glue Database
+  - one Glue Crawler
+  Optionally enables Firehose Lambda transformation before landing data to S3.
+
+Parameters:
+  # Logical pipeline name, mainly for readability and tagging
+  PipelineName:
+    Type: String
+    Description: Pipeline name, for example ctr, agent, or lens
+
+  # S3 bucket to store landed data
+  S3BucketName:
+    Type: String
+    Description: Globally unique S3 bucket name
+
+  # Kinesis Data Stream name
+  KinesisStreamName:
+    Type: String
+    Description: Name of the Kinesis Data Stream
+
+  # Firehose delivery stream name
+  FirehoseDeliveryStreamName:
+    Type: String
+    Description: Name of the Kinesis Firehose delivery stream
+
+  # Glue Database name to create
+  GlueDatabaseName:
+    Type: String
+    Description: Glue Database name to create
+
+  # Glue Crawler name
+  GlueCrawlerName:
+    Type: String
+    Description: Name of the Glue Crawler
+
+  # Existing IAM Role ARN used by Firehose
+  # This role must already have permissions for:
+  # - reading from Kinesis
+  # - writing to S3
+  # - invoking Lambda (if transformation is enabled)
+  FirehoseRoleArn:
+    Type: String
+    Description: Existing IAM Role ARN used by Firehose for Kinesis source read and S3 delivery
+
+  # Existing IAM Role ARN used by Glue Crawler
+  # This role must already have permissions for:
+  # - reading from the created S3 bucket
+  # - Glue crawler / catalog operations
+  GlueCrawlerRoleArn:
+    Type: String
+    Description: Existing IAM Role ARN for Glue Crawler
+
+  # Whether to enable Firehose Lambda transformation
+  EnableTransformation:
+    Type: String
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'false'
+    Description: Whether to enable Firehose Lambda transformation
+
+  # Existing Lambda ARN used by Firehose transformation
+  # Leave empty if transformation is not enabled
+  TransformationLambdaArn:
+    Type: String
+    Default: ''
+    Description: Existing Lambda ARN for Firehose transformation. Leave empty if not used.
+
+  # Firehose buffer interval
+  FirehoseBufferInterval:
+    Type: Number
+    Default: 300
+    Description: Firehose buffering interval in seconds
+
+  # Firehose buffer size
+  FirehoseBufferSize:
+    Type: Number
+    Default: 5
+    Description: Firehose buffering size in MB
+
+Conditions:
+  # Only enable Firehose processing if explicitly requested
+  UseTransformation: !Equals [!Ref EnableTransformation, 'true']
+
+Resources:
+  ############################################################
+  # S3 bucket
+  ############################################################
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref S3BucketName
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${PipelineName}-bucket'
+        - Key: Pipeline
+          Value: !Ref PipelineName
+
+  ############################################################
+  # Kinesis Data Stream
+  ############################################################
+  DataStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Ref KinesisStreamName
+      ShardCount: 1
+      RetentionPeriodHours: 24
+      Tags:
+        - Key: Name
+          Value: !Sub '${PipelineName}-stream'
+        - Key: Pipeline
+          Value: !Ref PipelineName
+
+  ############################################################
+  # Glue Database
+  ############################################################
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Ref GlueDatabaseName
+
+  ############################################################
+  # Firehose delivery stream
+  # Uses ONE Firehose role for:
+  # - reading from Kinesis
+  # - delivering to S3
+  # - invoking Lambda if enabled
+  ############################################################
+  FirehoseDeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - DataBucket
+      - DataStream
+    Properties:
+      DeliveryStreamName: !Ref FirehoseDeliveryStreamName
+      DeliveryStreamType: KinesisStreamAsSource
+
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt DataStream.Arn
+        RoleARN: !Ref FirehoseRoleArn
+
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !GetAtt DataBucket.Arn
+        RoleARN: !Ref FirehoseRoleArn
+
+        BufferingHints:
+          IntervalInSeconds: !Ref FirehoseBufferInterval
+          SizeInMBs: !Ref FirehoseBufferSize
+
+        CompressionFormat: GZIP
+
+        ProcessingConfiguration: !If
+          - UseTransformation
+          - Enabled: true
+            Processors:
+              - Type: Lambda
+                Parameters:
+                  - ParameterName: LambdaArn
+                    ParameterValue: !Ref TransformationLambdaArn
+          - !Ref AWS::NoValue
+
+  ############################################################
+  # Lambda resource-based permission
+  # Allows THIS Firehose stream to invoke THIS Lambda
+  #
+  # Note:
+  # - Firehose role still needs lambda:InvokeFunction
+  # - This resource adds permission on the Lambda side
+  ############################################################
+  FirehoseInvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Condition: UseTransformation
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TransformationLambdaArn
+      Principal: firehose.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt FirehoseDeliveryStream.Arn
+
+  ############################################################
+  # Glue Crawler
+  ############################################################
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    DependsOn:
+      - DataBucket
+      - GlueDatabase
+      - FirehoseDeliveryStream
+    Properties:
+      Name: !Ref GlueCrawlerName
+      Role: !Ref GlueCrawlerRoleArn
+      DatabaseName: !Ref GlueDatabaseName
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${DataBucket}/'
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: LOG
+
+Outputs:
+  BucketName:
+    Description: Created S3 bucket name
+    Value: !Ref DataBucket
+
+  BucketArn:
+    Description: Created S3 bucket ARN
+    Value: !GetAtt DataBucket.Arn
+
+  KinesisStreamNameOutput:
+    Description: Created Kinesis Data Stream name
+    Value: !Ref DataStream
+
+  KinesisStreamArn:
+    Description: Created Kinesis Data Stream ARN
+    Value: !GetAtt DataStream.Arn
+
+  FirehoseName:
+    Description: Created Firehose delivery stream name
+    Value: !Ref FirehoseDeliveryStream
+
+  FirehoseArn:
+    Description: Created Firehose delivery stream ARN
+    Value: !GetAtt FirehoseDeliveryStream.Arn
+
+  GlueDatabaseNameOutput:
+    Description: Created Glue Database name
+    Value: !Ref GlueDatabaseName
+
+  GlueCrawlerNameOutput:
+    Description: Created Glue Crawler name
+    Value: !Ref GlueCrawler
