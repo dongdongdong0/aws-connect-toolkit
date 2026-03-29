@@ -71,18 +71,36 @@ Migrates and updates Amazon Connect contact flows across instances, including de
 ---
 ### 2. Data Pipeline Toolkit
 
-Automates deployment and processing of Amazon Connect CTR data pipelines.
+A highly automated infrastructure toolkit for deploying and managing scalable Amazon Connect data pipelines.
+
+Unlike a simple CTR ingestion setup, this module provides a **generalized and reusable deployment framework** that supports multiple data types and environments.
 
 | Tool | Purpose |
 |---|---|
-| `data_pipeline.yaml` + `deploy.sh` | Deploy full CTR data pipeline (S3, Kinesis, Firehose, Glue) |
-| CTR Data Cleaning Lambda | Normalize and clean CTR attributes before storage |
+| `data_pipeline.yaml` + `deploy.sh` | Deploy end-to-end data pipeline infrastructure (S3, Kinesis, Firehose, Glue) with automated configuration |
+| CTR Data Cleaning Lambda | Optional transformation layer for normalizing and standardizing incoming data |
 
-**Capabilities:**
+**Key Capabilities:**
 
-- End-to-end pipeline provisioning
-- IAM automation
-- Optional Lambda transformation integration
+- **End-to-end automated deployment**
+  - Fully provisions pipeline components using CloudFormation
+  - Eliminates manual setup in AWS Console
+
+- **Dynamic parameter resolution**
+  - Automatically retrieves required ARNs, roles, and environment-specific values using CLI + JMESPath
+  - Reduces hardcoding and improves reusability across environments
+
+- **IAM automation**
+  - Automatically generates and attaches required inline policies
+  - Minimizes common permission-related deployment failures
+
+- **Pluggable transformation layer**
+  - Supports optional Lambda integration for real-time data normalization
+  - Particularly useful for handling inconsistent Connect attributes
+
+- **Extensible architecture**
+  - Designed beyond CTR use cases
+  - Can be adapted for other streaming or structured data pipelines
 
 📄 See: `data_pipeline/README.md`
 
