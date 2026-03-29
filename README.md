@@ -64,7 +64,7 @@ Migrates contact flows between Amazon Connect instances and automatically resolv
 | `update_lambda.py` | Update Lambda function references |
 | `update_lexbot.py` | Update Lex bot integrations |
 
-> ⚠️ Scripts must be executed in the order listed above. Core dependencies must be resolved before Lambda / Lex updates can succeed.
+> ⚠️ Firsr two scripts must be executed before the others. Core dependencies must be resolved before Lambda / Lex updates can succeed.
 
 📄 See: `contact_flow_migration/README_flow_migration.md`
 
