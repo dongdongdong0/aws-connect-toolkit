@@ -49,7 +49,7 @@ Defines the full data pipeline infrastructure:
 
 ---
 
-### 2. Deployment Script (`deploy.sh`)
+### 2. Deployment Script (`deploy_pipeline.sh`)
 
 A helper script that automates:
 
