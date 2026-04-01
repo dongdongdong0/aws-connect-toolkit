@@ -72,7 +72,6 @@ confirm() {
 # Defaults
 ########################################
 REGION="${AWS_REGION:-us-east-1}"
-ENABLE_TRANSFORMATION="false"
 TEMPLATE_FILE="data_pipeline.yaml"
 
 ########################################
@@ -164,8 +163,9 @@ fi
 ########################################
 # Policy names
 ########################################
-FIREHOSE_PATCH_POLICY_NAME="DataPipelineFirehosePatch"
-CRAWLER_PATCH_POLICY_NAME="DataPipelineCrawlerPatch"
+FIREHOSE_PATCH_POLICY_NAME="DataPipelineFirehosePatch-${PIPELINE_NAME}"
+CRAWLER_PATCH_POLICY_NAME="DataPipelineCrawlerPatch-${PIPELINE_NAME}"
+
 
 ########################################
 # Build policies
