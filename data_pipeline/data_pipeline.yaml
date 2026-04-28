@@ -205,15 +205,18 @@ Resources:
 
         CompressionFormat: GZIP
 
-        ProcessingConfiguration: !If
-          - UseTransformation
-          - Enabled: true
-            Processors:
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: AppendDelimiterToRecord
+            - !If
+              - UseTransformation
               - Type: Lambda
                 Parameters:
                   - ParameterName: LambdaArn
                     ParameterValue: !Ref TransformationLambdaArn
-          - !Ref AWS::NoValue
+              - !Ref AWS::NoValue
+        
 
   ############################################################
   # Lambda resource-based permission
