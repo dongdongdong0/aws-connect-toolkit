@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# ============================================================
+# IAM Roles for Amazon Connect Data Pipeline
+#
+# Purpose:
+# This template creates the two IAM roles consumed by
+# data_pipeline.yaml (GlueCrawlerRoleArn / FirehoseRoleArn):
+# - Glue Crawler role: AWS managed AWSGlueServiceRole policy only
+# - Firehose role: inline policy granting Kinesis read, CloudWatch
+#   Logs, Lambda invoke (for Firehose transformation), and
+#   optional KMS access
+# ============================================================
+Description: >
+  IAM roles for the Amazon Connect Data Pipeline.
+  Creates:
+  - one IAM role for the Glue Crawler
+  - one IAM role for Kinesis Firehose
+
+Parameters:
+  GlueCrawlerRoleName:
+    Type: String
+    Description: Name of the IAM role used by the Glue Crawler
+
+  FirehoseRoleName:
+    Type: String
+    Description: Name of the IAM role used by Kinesis Firehose
+
+Resources:
+  ############################################################
+  # Glue Crawler Role
+  ############################################################
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref GlueCrawlerRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Name
+          Value: !Ref GlueCrawlerRoleName
+        - Key: Component
+          Value: glue-crawler
+
+  ############################################################
+  # Firehose Role
+  ############################################################
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref FirehoseRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: FirehoseDeliveryAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: KinesisAll
+                Effect: Allow
+                Action: kinesis:*
+                Resource: '*'
+              - Sid: FirehoseLogging
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:log-group:/aws/kinesisfirehose/*
+              # Always granted — Firehose needs this whenever a
+              # Lambda transformation is attached. Kept in the role
+              # itself so deploy_pipeline.sh does not have to patch
+              # IAM at deploy time depending on EnableTransformation.
+              - Sid: LambdaTransformInvoke
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:GetFunctionConfiguration
+                Resource: arn:aws:lambda:*:*:function:*
+              - Sid: KmsForKinesisIfUsed
+                Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource: arn:aws:kms:*:*:key/*
+                Condition:
+                  ForAnyValue:StringLike:
+                    kms:ViaService:
+                      - kinesis.*.amazonaws.com
+      Tags:
+        - Key: Name
+          Value: !Ref FirehoseRoleName
+        - Key: Component
+          Value: kinesis-firehose

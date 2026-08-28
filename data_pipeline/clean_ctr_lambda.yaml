@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# ============================================================
+# CTR Data Cleaning Lambda (CloudFormation Template)
+#
+# Purpose:
+# Deploys the Lambda function used by Kinesis Firehose to
+# normalize Amazon Connect CTR user-defined attributes before
+# landing to S3. Also creates the IAM execution role with the
+# broad "Activeo" permissions policy attached.
+#
+# Creates:
+# - IAM role for the Lambda
+# - Lambda function (inline code from clean_ctr_data.py)
+# ============================================================
+Description: >
+  CTR data cleaning Lambda for Firehose transformation.
+  Creates one IAM role and one Lambda function.
+
+Parameters:
+  FunctionName:
+    Type: String
+    Description: Name of the Lambda function
+
+  RoleName:
+    Type: String
+    Description: Name of the Lambda execution role
+
+  Runtime:
+    Type: String
+    Default: python3.12
+    AllowedValues:
+      - python3.10
+      - python3.11
+      - python3.12
+    Description: Lambda runtime
+
+  MemorySize:
+    Type: Number
+    Default: 256
+    Description: Lambda memory in MB
+
+  Timeout:
+    Type: Number
+    Default: 60
+    Description: Lambda timeout in seconds (Firehose max is 300)
+
+Resources:
+  ############################################################
+  # IAM role for the Lambda
+  ############################################################
+  CleanCtrLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ActiveoLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ActiveoLambdaPermissions
+                Effect: Allow
+                Action:
+                  - s3:*
+                  - dynamodb:*
+                  - cases:*
+                  - profile:*
+                  - connect:*
+                  - lambda:*
+                  - lex:*
+                  - bedrock:*
+                  - wisdom:*
+                  - kendra:*
+                  - kms:*
+                  - sns:*
+                  - ses:*
+                  - sms-voice:*
+                  - apigateway:*
+                  - execute-api:*
+                  - appsync:*
+                  - secretsmanager:GetSecretValue
+                  - bedrock-agentcore:*
+                  - aws-marketplace:*
+                  - kinesisvideo:*
+                Resource: '*'
+              - Sid: AWSLambdaBasicExecutionLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Sid: AWSLambdaVPCAccessExecution
+                Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Ref RoleName
+        - Key: Component
+          Value: connect-ctr-clean
+
+  ############################################################
+  # Lambda function
+  ############################################################
+  CleanCtrLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      Role: !GetAtt CleanCtrLambdaRole.Arn
+      Runtime: !Ref Runtime
+      Handler: index.lambda_handler
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref Timeout
+      Description: Normalize Amazon Connect CTR user-defined attributes for Firehose
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import re
+          import unicodedata
+
+
+          def normalize_quotes(text: str) -> str:
+              replacements = {
+                  "“": '"',
+                  "”": '"',
+                  "‘": "'",
+                  "’": "'",
+                  "＂": '"',
+                  "＇": "'",
+                  "：": ":",
+                  "，": ",",
+                  "（": "(",
+                  "）": ")",
+                  "【": "[",
+                  "】": "]",
+                  "　": " ",
+              }
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              return text
+
+
+          def normalize_key(key: str) -> str:
+              if key is None:
+                  return ""
+              key = str(key)
+              key = normalize_quotes(key)
+              key = unicodedata.normalize("NFKC", key)
+              key = key.strip().lower()
+              key = re.sub(r"[^a-z0-9]+", "_", key)
+              key = re.sub(r"_+", "_", key)
+              key = key.strip("_")
+              return key
+
+
+          def normalize_value(value):
+              if isinstance(value, str):
+                  value = normalize_quotes(value).strip()
+                  return None if value == "" else value
+              return value
+
+
+          def lambda_handler(event, context):
+              output = []
+              for record in event["records"]:
+                  try:
+                      payload = base64.b64decode(record["data"]).decode("utf-8")
+                      data = json.loads(payload)
+
+                      raw_attrs = {}
+                      if isinstance(data.get("Attributes"), dict):
+                          raw_attrs.update(data["Attributes"])
+                      if isinstance(data.get("attributes"), dict):
+                          raw_attrs.update(data["attributes"])
+
+                      cleaned_attrs = {}
+                      for raw_key, raw_value in raw_attrs.items():
+                          new_key = normalize_key(raw_key)
+                          if not new_key:
+                              continue
+                          new_value = normalize_value(raw_value)
+                          if new_key not in cleaned_attrs:
+                              cleaned_attrs[new_key] = new_value
+                          else:
+                              if cleaned_attrs[new_key] is None and new_value is not None:
+                                  cleaned_attrs[new_key] = new_value
+
+                      data["attributes_clean"] = cleaned_attrs
+
+                      new_data = base64.b64encode(
+                          json.dumps(data, ensure_ascii=False).encode("utf-8")
+                      ).decode("utf-8")
+
+                      output.append({
+                          "recordId": record["recordId"],
+                          "result": "Ok",
+                          "data": new_data
+                      })
+
+                  except Exception as e:
+                      print(f"Error processing record {record.get('recordId')}: {e}")
+                      output.append({
+                          "recordId": record["recordId"],
+                          "result": "ProcessingFailed",
+                          "data": record["data"]
+                      })
+
+              return {"records": output}
+      Tags:
+        - Key: Name
+          Value: !Ref FunctionName
+        - Key: Component
+          Value: connect-ctr-clean

@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# ============================================================
+# Glue Database + Athena Workgroup + Query Result Bucket
+#
+# Purpose:
+# Provisions the analytics-side resources that sit on top of
+# the data landed by the Connect data pipeline:
+#
+# - Glue Database: metadata namespace where the Crawler will
+#   register tables discovered in the CTR S3 bucket.
+# - S3 bucket: dedicated location for Athena query results.
+# - Athena Workgroup: bound to the query-result bucket above,
+#   with EnforceWorkGroupConfiguration = true so that any
+#   client-side "Query result location" setting is IGNORED
+#   and every query lands in this bucket.
+# ============================================================
+Description: >
+  Creates a Glue Database, an S3 bucket for Athena query
+  results, and an Athena Workgroup that enforces the query
+  result location (overriding client settings).
+
+Parameters:
+  GlueDatabaseName:
+    Type: String
+    Description: Name of the Glue Database to create
+
+  AthenaWorkgroupName:
+    Type: String
+    Description: Name of the Athena Workgroup to create
+
+  QueryResultBucketName:
+    Type: String
+    Description: Globally unique S3 bucket name for Athena query results
+
+  QueryResultPrefix:
+    Type: String
+    Default: query-results/
+    Description: Prefix inside the bucket where query results are written
+
+Resources:
+  ############################################################
+  # Glue Database
+  # Empty namespace; tables will be added by a Glue Crawler
+  # (or by CTAS/CREATE TABLE) from other stacks.
+  ############################################################
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Ref GlueDatabaseName
+
+  ############################################################
+  # S3 bucket for Athena query results
+  # - Retained on stack deletion to preserve query history
+  # - Versioning intentionally OFF: Athena writes each query
+  #   result to a unique object key, so versioning adds no
+  #   safety and roughly doubles storage cost.
+  # - Public access fully blocked
+  # - Lifecycle rule expires results after 7 days; Athena
+  #   results tend to accumulate quickly.
+  ############################################################
+  QueryResultBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref QueryResultBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldQueryResults
+            Status: Enabled
+            ExpirationInDays: 7
+      Tags:
+        - Key: Component
+          Value: athena-query-results
+
+  ############################################################
+  # Athena Workgroup
+  #
+  # Key setting: EnforceWorkGroupConfiguration = true
+  # This is what makes the workgroup OVERRIDE any client-side
+  # settings. When true, queries run under this workgroup
+  # ALWAYS use ResultConfiguration below — the "Settings" tab
+  # in the Athena console, JDBC/ODBC properties, and any
+  # OutputLocation passed via API/CLI are all ignored.
+  #
+  # PublishCloudWatchMetricsEnabled: emits per-query metrics
+  # to CloudWatch (useful for cost/perf monitoring).
+  ############################################################
+  AthenaWorkgroup:
+    Type: AWS::Athena::WorkGroup
+    DependsOn: QueryResultBucket
+    Properties:
+      Name: !Ref AthenaWorkgroupName
+      State: ENABLED
+      Description: Workgroup with enforced query result location
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${QueryResultBucketName}/${QueryResultPrefix}'
+          EncryptionConfiguration:
+            EncryptionOption: SSE_S3
+      Tags:
+        - Key: Component
+          Value: athena-workgroup

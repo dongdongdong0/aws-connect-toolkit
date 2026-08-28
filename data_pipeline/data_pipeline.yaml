@@ -166,16 +166,6 @@ Resources:
           Value: !Ref PipelineName
 
   ############################################################
-  # Glue Database
-  ############################################################
-  GlueDatabase:
-    Type: AWS::Glue::Database
-    Properties:
-      CatalogId: !Ref AWS::AccountId
-      DatabaseInput:
-        Name: !Ref GlueDatabaseName
-
-  ############################################################
   # Firehose delivery stream
   # Uses ONE Firehose role for:
   # - reading from Kinesis
@@ -243,7 +233,6 @@ Resources:
     Type: AWS::Glue::Crawler
     DependsOn:
       - DataBucket
-      - GlueDatabase
       - FirehoseDeliveryStream
     Properties:
       Name: !Ref GlueCrawlerName
