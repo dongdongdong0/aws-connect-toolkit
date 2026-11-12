@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 ENGLISH DESCRIPTION
 -------------------
@@ -18,7 +19,7 @@ The script performs the following steps:
    - Description
    - Items
    - ScoringStrategy
-9. Returns migration statistics, including:
+9. Prints migration statistics, including:
    - copied forms
    - skipped forms
    - failed forms
@@ -32,6 +33,15 @@ This script is useful for:
 Note:
 Pagination is intentionally omitted because the number of evaluation forms in this environment
 is expected to remain well below 100.
+
+--dry-run lists the forms that would be copied without calling describe_evaluation_form
+or create_evaluation_form. The script exits with status 1 if any form failed, so it can
+be used in a pipeline.
+
+Usage:
+  python3 migrate_evaluation_forms.py \
+      --source-instance-id <SOURCE_ID> --source-region us-east-1 \
+      --target-instance-id <TARGET_ID> --target-region ca-central-1 --dry-run
 
 
 中文说明
@@ -53,7 +63,7 @@ Evaluation Form（质检评分表），并支持跨区域迁移。
    - Description
    - Items
    - ScoringStrategy
-9. 返回迁移结果统计，包括：
+9. 打印迁移结果统计，包括：
    - copied（成功迁移）
    - skipped（已存在同名表单，跳过）
    - failed（迁移失败）
@@ -66,22 +76,44 @@ Evaluation Form（质检评分表），并支持跨区域迁移。
 
 说明：
 本脚本未实现分页，因为当前环境中的 Evaluation Form 数量预期远小于 100。
+
+--dry-run 只列出将要迁移的表单，不会调用 describe_evaluation_form 和
+create_evaluation_form。如果有表单迁移失败，脚本以退出码 1 结束，便于在流水线中使用。
 """
 
 
-import json
+import argparse
+import sys
+
 import boto3
 
 
-def lambda_handler(event, context):
-    # Hardcoded config
-    source_region = "us-east-1"
-    target_region = "ca-central-1"
-    source_instance_id = "391138ba-7b4d-4b69-ab9e-a0669b698748"
-    target_instance_id = "3f65a0d6-e8ed-422c-a4bf-8b88c7804453"
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Migrate Amazon Connect Evaluation Forms between instances"
+    )
+    p.add_argument("--source-instance-id", required=True, help="Source Connect instance ID")
+    p.add_argument("--target-instance-id", required=True, help="Target Connect instance ID")
+    p.add_argument("--source-region", required=True, help="Source region (e.g. us-east-1)")
+    p.add_argument("--target-region", required=True, help="Target region (e.g. ca-central-1)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="List the forms that would be copied without creating anything")
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    source_region = args.source_region
+    target_region = args.target_region
+    source_instance_id = args.source_instance_id
+    target_instance_id = args.target_instance_id
 
     source_connect = boto3.client("connect", region_name=source_region)
     target_connect = boto3.client("connect", region_name=target_region)
+
+    if args.dry_run:
+        print("=== DRY RUN — no forms will be created ===")
 
     copied = []
     skipped = []
@@ -126,6 +158,14 @@ def lambda_handler(event, context):
                 print(f"Skipped: {title} | same title exists in target")
                 continue
 
+            if args.dry_run:
+                copied.append({
+                    "source_form_id": form_id,
+                    "title": title
+                })
+                print(f"Would copy: {title} | {form_id}")
+                continue
+
             # Read full form definition from source
             resp = source_connect.describe_evaluation_form(
                 InstanceId=source_instance_id,
@@ -162,17 +202,13 @@ def lambda_handler(event, context):
             })
             print(f"Failed: {title} | {form_id} | {str(e)}")
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps(
-            {
-                "copied_count": len(copied),
-                "copied": copied,
-                "skipped_count": len(skipped),
-                "skipped": skipped,
-                "failed_count": len(failed),
-                "failed": failed
-            },
-            ensure_ascii=False
-        )
-    }
+    print(f"\nCopied:  {len(copied)}")
+    print(f"Skipped: {len(skipped)}")
+    print(f"Failed:  {len(failed)}")
+
+    if failed:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
