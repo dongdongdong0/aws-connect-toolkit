@@ -2,7 +2,7 @@
 
 ## Overview
 
-This folder is a collection of small, standalone tools for **migrating and provisioning Amazon Connect resources** — typically from one instance to another (DEV → UAT → PROD, or cross-region), but some tools also serve bulk provisioning on a single instance.
+This folder is a collection of small, standalone tools for **migrating and provisioning Amazon Connect resources** — typically from one instance to another, but some tools also serve bulk provisioning on a single instance.
 
 Each file is an independent tool. There is no shared framework: pick the one you need and run it on its own. Common traits across the Python tools:
 

@@ -16,7 +16,7 @@ This toolkit was built to automate these operations by combining AWS APIs and In
 
 The project covers three kinds of work:
 
-- **Cross-instance migration** — moving an entire Connect configuration from DEV → UAT → PROD, or across regions
+- **Cross-instance migration** — moving the resources in one Connect instance to another instance, or across regions
 - **Bulk provisioning** — creating many resources at once on a single instance (quick connects, agent statuses, phone numbers)
 - **Infrastructure deployment** — the CTR data pipeline and the email-archive Lambdas, as repeatable deployments
 
